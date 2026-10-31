@@ -1,0 +1,3 @@
+# MS-ODRAWXML defines binSize/binCount as text content, Excel writes and expects a val attribute
+*@cx:binning/cx:binSize
+*@cx:binning/cx:binCount
