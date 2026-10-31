@@ -1,3 +1,10 @@
-# MS-ODRAWXML defines binSize/binCount as text content, Excel writes and expects a val attribute
+# Known differences between the specification and what Excel writes and expects.
+
+# MS-ODRAWXML defines binSize/binCount/axisId as text content, Excel writes a val attribute
 *@cx:binning/cx:binSize
 *@cx:binning/cx:binCount
+*@cx:series/cx:axisId
+
+# Excel gives every chartEx fallback shape the id 0, so a second chartEx in the same drawing
+# duplicates it; only consumers without chartEx support read the fallback
+Sem_UniqueAttributeValue@mc:AlternateContent/mc:Fallback/xdr:sp/xdr:nvSpPr/xdr:cNvPr

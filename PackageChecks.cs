@@ -254,6 +254,7 @@ static class PackageChecks {
                 string path = target;
                 int hash = path.IndexOf('#');
                 if (hash >= 0) path = path[..hash];
+                if (path.Length == 0 && hash >= 0) continue;
                 path = path.StartsWith('/') ? path[1..] : sourceDir + path;
                 string? resolved = Normalize(Uri.UnescapeDataString(path));
                 if (resolved != null) info.Targets.Add(resolved);

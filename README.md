@@ -109,6 +109,17 @@ resolved by `schemaLocation` within the folder or by namespace, never over the n
 compatibility (`mc:Ignorable`, `mc:AlternateContent`) is applied first, treating every namespace
 with a schema in the folder as understood.
 
+## Tests
+
+```sh
+dotnet publish -c Release -r osx-arm64
+dotnet run --project tests
+```
+
+The tests run the published binary (or the path given as first argument) against workbooks built
+in code with one defect each, plus `tests/fixtures/chartex.xlsx` written by encharter, and check
+ids, locations and exit codes. The `core.xml` checks run once the schemas have been downloaded.
+
 ## Updating
 
 Nothing about the standard is hardcoded: `latest` resolves to the newest version of the installed

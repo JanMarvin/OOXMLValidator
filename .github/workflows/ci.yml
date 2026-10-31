@@ -1,0 +1,60 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: macos-latest
+            rid: osx-arm64
+          - os: windows-latest
+            rid: win-x64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install native toolchain
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+
+      - name: Publish
+        run: dotnet publish -c Release -r ${{ matrix.rid }}
+
+      - name: Cache schemas
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/share/OOXMLValidator
+            ~/Library/Application Support/OOXMLValidator
+            ~/AppData/Local/OOXMLValidator
+          key: schemas-${{ runner.os }}-${{ hashFiles('Fetch.cs') }}
+
+      - name: Fetch schemas
+        run: bin/Release/net10.0/${{ matrix.rid }}/publish/OOXMLValidator --fetch-schemas
+
+      - name: Test
+        run: dotnet run --project tests -c Release -- bin/Release/net10.0/${{ matrix.rid }}/publish/OOXMLValidator${{ runner.os == 'Windows' && '.exe' || '' }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OOXMLValidator-${{ matrix.rid }}
+          path: |
+            bin/Release/net10.0/${{ matrix.rid }}/publish/OOXMLValidator
+            bin/Release/net10.0/${{ matrix.rid }}/publish/OOXMLValidator.exe
+          if-no-files-found: error
