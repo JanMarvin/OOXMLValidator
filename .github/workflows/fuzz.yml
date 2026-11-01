@@ -6,7 +6,7 @@ on:
       target:
         description: package to fuzz
         type: choice
-        options: [all, openxlsx2, encharter]
+        options: [all, openxlsx2, encharter, easeling]
         default: all
       n:
         description: cases per package
@@ -22,6 +22,9 @@ on:
         default: main
       encharter_ref:
         description: encharter branch, tag or commit
+        default: main
+      easeling_ref:
+        description: easeling branch, tag or commit
         default: main
 
 jobs:
@@ -62,12 +65,13 @@ jobs:
         with:
           use-public-rspm: true
 
-      - name: Install openxlsx2 and encharter
+      - name: Install openxlsx2, encharter and easeling
         run: |
           Rscript -e 'install.packages(c("remotes", "png"))'
           Rscript -e 'remotes::install_github("JanMarvin/openxlsx2@${{ inputs.openxlsx2_ref }}")'
           Rscript -e 'remotes::install_github("JanMarvin/encharter@${{ inputs.encharter_ref }}", upgrade = "never")'
-          Rscript -e 'for (p in c("openxlsx2", "encharter")) cat(p, format(packageVersion(p)), "\n")'
+          Rscript -e 'remotes::install_github("JanMarvin/easeling@${{ inputs.easeling_ref }}", upgrade = "never")'
+          Rscript -e 'for (p in c("openxlsx2", "encharter", "easeling")) cat(p, format(packageVersion(p)), "\n")'
 
       - name: Fuzz
         run: |
@@ -80,7 +84,7 @@ jobs:
         if: always()
         run: |
           {
-            echo "openxlsx2@${{ inputs.openxlsx2_ref }}, encharter@${{ inputs.encharter_ref }}, seed ${{ inputs.seed || github.run_number }}"
+            echo "openxlsx2@${{ inputs.openxlsx2_ref }}, encharter@${{ inputs.encharter_ref }}, easeling@${{ inputs.easeling_ref }}, seed ${{ inputs.seed || github.run_number }}"
             echo '```'
             cat fuzz.txt 2>/dev/null
             echo '```'

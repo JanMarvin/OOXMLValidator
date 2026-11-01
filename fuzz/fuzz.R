@@ -12,7 +12,7 @@ suppressPackageStartupMessages(library(openxlsx2))
 
 args <- commandArgs(trailingOnly = TRUE)
 opt <- list(target = "all", n = "500", seed = "1", validator = "", out = "", keep = "FALSE", functions = "",
-            fail = "FALSE")
+            fail = "FALSE", timeout = "60")
 for (a in args) {
   kv <- strsplit(sub("^--", "", a), "=", fixed = TRUE)[[1]]
   opt[[kv[1]]] <- if (length(kv) > 1) paste(kv[-1], collapse = "=") else "TRUE"
@@ -533,13 +533,70 @@ targets_encharter <- list(
                                                                                        c("red"), character()))))
 )
 
+# easeling targets -----------------------------------------------------------
+
+# colors as R graphics take them
+g_rcol <- function() {
+  pick(list("red", "#FF000080", "#123456", "transparent", NA, 0, 3, "white", "notacolor", "#zz",
+            "#12345", quote(rgb(0, 0, 1, 0.3)), quote(grDevices::hcl(120, 50, 70))))
+}
+g_lty <- function() pick(list(0, 1, 2, 6, "44", "1F3C", "dotted", "longdash", "blank", 7, "bogus", NA))
+g_pch <- function() pick(list(1, 19, 21, 25, 26, 0, "a", "\u00e4", ".", NA, -1, 127))
+# grid copies a family longer than 200 bytes into a fixed buffer and R aborts, on any device
+g_family <- function() {
+  x <- pick(list("", "sans", "serif", "mono", "Calibri", "Courier New", "nofont", g_string()))
+  if (!is.na(x) && nchar(x, type = "bytes") > 200) "toolong" else x
+}
+
+targets_easeling <- list(
+  easel_dev = list(device = TRUE, params = list(
+    width = g_number, height = g_number, units = g_choice(list("in", "cm", "mm", "px"), list("ft", "")),
+    pointsize = g_number, fontname = g_family, bg = g_rcol, symbolfamily = g_family,
+    underline = g_bool, strikeout = g_bool, text_voff = g_number),
+    draw = function(f) list(quote(plot(1:10, (1:10)^2, type = "b", main = "title")))),
+  text = list(params = list(labels = g_string, cex = g_number, srt = g_number, col = g_rcol, family = g_family,
+                            font = function() pick(list(1, 2, 3, 4, 5, 0, NA))),
+    draw = function(f) list(quote(plot.new()), as.call(c(list(quote(text), x = 0.5, y = 0.5),
+                                                         utils::modifyList(list(labels = "text"), f))))),
+  points = list(params = list(pch = g_pch, cex = g_number, col = g_rcol, bg = g_rcol, lwd = g_number),
+    draw = function(f) list(as.call(c(list(quote(plot), x = 1:5), f)))),
+  lines = list(params = list(lty = g_lty, lwd = g_number, col = g_rcol,
+                             lend = function() pick(list("round", "butt", "square", 3)),
+                             ljoin = function() pick(list("round", "mitre", "bevel", 3))),
+    draw = function(f) list(as.call(c(list(quote(plot), x = 1:5, type = "l"), f)))),
+  # base R computes every hatching line itself, a huge density hangs on any device
+  rect = list(params = list(col = g_rcol, border = g_rcol, lty = g_lty, lwd = g_number,
+                            density = function() pick(list(0, 5, 20, -1, NA, 200)), angle = g_number),
+    draw = function(f) list(quote(plot.new()), as.call(c(list(quote(rect), 0.1, 0.1, 0.9, 0.9), f)))),
+  polygon = list(params = list(x = function() pick(list(c(0.1, 0.5, 0.9), c(0.1, NA, 0.9), c(Inf, 0.5, 0.9), numeric())),
+                               col = g_rcol, border = g_rcol, lwd = g_number),
+    draw = function(f) list(quote(plot.new()),
+                            as.call(c(list(quote(polygon)), utils::modifyList(list(x = c(0.1, 0.5, 0.9), y = c(0.1, 0.9, 0.1)), f))))),
+  title = list(params = list(main = g_string, sub = g_string, xlab = g_string, ylab = g_string,
+                             cex.main = g_number, col.main = g_rcol, family = g_family),
+    draw = function(f) list(as.call(c(list(quote(plot), x = 1:3), f)))),
+  par = list(params = list(cex = g_number, lwd = g_number, col = g_rcol, fg = g_rcol, bg = g_rcol, family = g_family,
+                           las = function() pick(list(0, 1, 2, 3))),
+    draw = function(f) list(as.call(c(list(quote(par)), f)), quote(plot(1:3, main = "par")))),
+  grid_text = list(params = list(label = g_string, rot = g_number,
+                                 gp = function() call("gpar", fontsize = g_number(), col = g_rcol(), fontfamily = g_family(),
+                                                      fontface = pick(list(1, 2, 3, 4, "bold", "bogus")),
+                                                      alpha = pick(list(0, 0.5, 1, 2, NA)))),
+    draw = function(f) list(quote(grid::grid.newpage()),
+                            as.call(c(list(quote(grid::grid.text)), utils::modifyList(list(label = "grid"), f))))),
+  grid_rect = list(params = list(gp = function() call("gpar", fill = g_rcol(), col = g_rcol(), lwd = g_number(),
+                                                      lty = g_lty(), alpha = pick(list(0, 0.5, 1, NA)))),
+    draw = function(f) list(quote(grid::grid.newpage()), as.call(c(list(quote(grid::grid.rect), width = 0.5, height = 0.5), f))))
+)
+
 # --functions=a,b limits the run to these targets
 if (nzchar(opt$functions)) {
   only <- strsplit(opt$functions, ",", fixed = TRUE)[[1]]
-  unknown <- setdiff(only, c(names(targets_openxlsx2), names(targets_encharter)))
+  unknown <- setdiff(only, c(names(targets_openxlsx2), names(targets_encharter), names(targets_easeling)))
   if (length(unknown)) stop("unknown functions: ", paste(unknown, collapse = ", "), call. = FALSE)
   targets_openxlsx2 <- targets_openxlsx2[names(targets_openxlsx2) %in% only]
   targets_encharter <- targets_encharter[names(targets_encharter) %in% only]
+  targets_easeling  <- targets_easeling[names(targets_easeling) %in% only]
 }
 
 # cases ----------------------------------------------------------------------
@@ -548,6 +605,22 @@ base_workbook <- function() {
   wb_workbook()$
     add_worksheet("Sheet 1")$
     add_data(x = data.frame(a = 1:3, b = c("x", "y", "z")))
+}
+
+# easeling draws on its device, the drawing goes into the first sheet
+make_case_easeling <- function() {
+  fn <- sample(names(targets_easeling), 1)
+  t <- targets_easeling[[fn]]
+  fuzzed <- draw_args(t$params)
+  list(target = fn, type = NA_character_, fuzzed = fuzzed, build = function(f) {
+    dev_args <- list(width = 6, height = 4)
+    if (isTRUE(t$device)) dev_args[names(f)] <- f
+    c(list(quote(grDevices::graphics.off()),
+           call("<-", as.name("f"), as.call(c(list(quote(easeling::easel_dev)), dev_args)))),
+      t$draw(if (isTRUE(t$device)) list() else f),
+      list(quote(invisible(grDevices::dev.off())),
+           quote(wb <- wb_add_drawing(wb, sheet = 1, xml = f, dims = "C2:J20"))))
+  })
 }
 
 base_chart_workbook <- function() {
@@ -617,20 +690,24 @@ make_case_encharter <- function() {
   })
 }
 
+# a case that runs longer than --timeout seconds is reported as a hang
 run_case <- function(calls, file, base) {
   env <- new.env(parent = globalenv())
   env$wb <- base()
+  setTimeLimit(elapsed = as.numeric(opt$timeout))
+  on.exit(setTimeLimit(elapsed = Inf), add = TRUE)
+  hang <- function(e) grepl("elapsed time limit", conditionMessage(e), fixed = TRUE)
   status <- tryCatch({
     withCallingHandlers({
       for (cl in calls) eval(cl, env)
     }, warning = function(w) invokeRestart("muffleWarning"), message = function(m) invokeRestart("muffleMessage"))
     "accepted"
-  }, error = function(e) paste("rejected:", conditionMessage(e)))
+  }, error = function(e) if (hang(e)) "timeout" else paste("rejected:", conditionMessage(e)))
   if (status != "accepted") return(status)
   tryCatch({
     suppressWarnings(env$wb$save(file))
     "saved"
-  }, error = function(e) paste("save failed:", conditionMessage(e)))
+  }, error = function(e) if (hang(e)) "timeout" else paste("save failed:", conditionMessage(e)))
 }
 
 validate <- function(dir) {
@@ -684,18 +761,30 @@ sanity_encharter <- function() {
   calls
 }
 
+# a script that reproduces a case
+case_script <- function(label, base, cs, id) {
+  c("library(openxlsx2)", if (label == "encharter") "library(encharter)",
+    if (label == "easeling") c("library(easeling)", "library(grid)"),
+    paste0("wb <- (", paste(deparse(body(base)), collapse = "\n"), ")"),
+    vapply(cs$build(cs$fuzzed), function(cl) paste(deparse(cl, width.cutoff = 80L), collapse = "\n"), ""),
+    sprintf("wb$save(\"%s.xlsx\")", id))
+}
+
 fuzz <- function(label, make_case, base, sanity = list(base = list())) {
   dir <- file.path(out_dir, label)
   dir.create(dir, showWarnings = FALSE)
   cases <- vector("list", n_cases)
+  # if R itself crashes, the case that crashed it is in last_case.R
   status <- character(n_cases)
   for (i in seq_len(n_cases)) {
     cs <- make_case()
     id <- sprintf("%s_%05d", label, i)
     cs$id <- id
+    writeLines(case_script(label, base, cs, id), file.path(dir, "last_case.R"))
     status[i] <- run_case(cs$build(cs$fuzzed), file.path(dir, paste0(id, ".xlsx")), base)
     cases[[i]] <- cs
   }
+  unlink(file.path(dir, "last_case.R"))
   names(cases) <- vapply(cases, function(x) x$id, "")
 
   for (s in names(sanity)) {
@@ -744,9 +833,9 @@ fuzz <- function(label, make_case, base, sanity = list(base = list())) {
     cat(sprintf("target %s never saved a file (%d cases), e.g. %s\n", t, sum(tgt == t), substr(first, 1, 160)))
   }
 
-  cat(sprintf("\n== %s: %d cases, %d rejected by R, %d save failures, %d saved, %d invalid\n",
+  cat(sprintf("\n== %s: %d cases, %d rejected by R, %d save failures, %d timeouts, %d saved, %d invalid\n",
               label, n_cases, sum(startsWith(status, "rejected")), sum(startsWith(status, "save failed")),
-              sum(status == "saved"), length(unique(findings$case))))
+              sum(status == "timeout"), sum(status == "saved"), length(unique(findings$case))))
 
   if (nrow(findings)) {
     findings$target <- vapply(cases[findings$case], function(x) sub(" \\(.*\\)$", "", x$target), "")
@@ -771,11 +860,7 @@ fuzz <- function(label, make_case, base, sanity = list(base = list())) {
       cat(sprintf("\n%s(%s): %s [%s]\n", r$target, names(params)[1], ascii(r$description), r$id))
       cat(sprintf("  at %s, %d case(s), e.g. %s\n", r$where, length(unique(findings$case[g])), r$case))
       cat(sprintf("  %s: %s\n", cs$target, show_args(cs$fuzzed)))
-      writeLines(c("library(openxlsx2)", if (label == "encharter") "library(encharter)",
-                   paste0("wb <- (", paste(deparse(body(base)), collapse = "\n"), ")"),
-                   vapply(cs$build(cs$fuzzed), function(cl) paste(deparse(cl, width.cutoff = 80L), collapse = "\n"), ""),
-                   sprintf("wb$save(\"%s.xlsx\")", r$case)),
-                 file.path(dir, paste0(r$case, ".R")))
+      writeLines(case_script(label, base, cs, r$case), file.path(dir, paste0(r$case, ".R")))
     }
   }
 
@@ -783,6 +868,11 @@ fuzz <- function(label, make_case, base, sanity = list(base = list())) {
   for (i in head(crashes, 10)) {
     cs <- cases[[i]]
     cat(sprintf("\nsave failed after %s: %s\n  %s\n", cs$target, show_args(cs$fuzzed), status[i]))
+  }
+  hangs <- which(status == "timeout")
+  for (i in head(hangs, 10)) {
+    cs <- cases[[i]]
+    cat(sprintf("\ntimeout after %s seconds in %s: %s\n", opt$timeout, cs$target, show_args(cs$fuzzed)))
   }
 
   if (opt$keep != "TRUE") {
@@ -793,7 +883,7 @@ fuzz <- function(label, make_case, base, sanity = list(base = list())) {
     unlink(file.path(dir, "attribution"), recursive = TRUE)
   }
   # cases that save an invalid file or fail to save
-  invisible(length(unique(findings$case)) + length(crashes))
+  invisible(length(unique(findings$case)) + length(crashes) + length(hangs))
 }
 
 cat("validator:", validator, "\nresults:  ", out_dir, "\n")
@@ -804,6 +894,10 @@ if (opt$target %in% c("all", "openxlsx2") && length(targets_openxlsx2)) {
 if (opt$target %in% c("all", "encharter") && length(targets_encharter)) {
   suppressPackageStartupMessages(library(encharter))
   problems <- problems + fuzz("encharter", make_case_encharter, base_chart_workbook, sanity_encharter())
+}
+if (opt$target %in% c("all", "easeling") && length(targets_easeling)) {
+  suppressPackageStartupMessages(library(grid))
+  problems <- problems + fuzz("easeling", make_case_easeling, base_workbook)
 }
 # --fail exits with status 1 if a case saved an invalid file or failed to save
 if (opt$fail == "TRUE" && problems > 0) quit(status = 1)

@@ -127,23 +127,32 @@ ids, locations and exit codes. The `core.xml` checks run once the schemas have b
 ```sh
 Rscript fuzz/fuzz.R --target=openxlsx2 --n=2000 --seed=1
 Rscript fuzz/fuzz.R --target=encharter --n=1000
+Rscript fuzz/fuzz.R --target=easeling --n=1000
 Rscript fuzz/fuzz.R --target=openxlsx2 --functions=wb_add_image,wb_remove_comment
 ```
 
 Each case is a small valid workbook plus one call of an openxlsx2 or encharter function with one
-to three fuzzed arguments (edge-case strings, numbers, colors, ranges, enumerations). Calls that
-stop with an error rejected their input; files that save but fail validation are reported, grouped
-by function, argument and finding, with the argument that alone reproduces the finding. A
-reproducing script and the file of the first case in each group are kept in the output folder.
-`--functions` limits a run to some targets, `--fail` exits with status 1 if a case saved an
-invalid file or failed to save. The `fuzz` workflow runs the fuzzer on GitHub Actions; start it
-manually under Actions, with the packages, their branches, the number of cases and the seed as inputs.
-The output is shown as the job summary, the reproducers and files are uploaded as `fuzz-results`. Values built by create functions (`fmt_txt()`,
-`create_shape()`, `create_hyperlink()`, table styles) are fuzzed through the function that writes
-them, and the remove functions run after the parts they remove were added.
-Arguments that take raw XML are not fuzzed. Findings that are known and accepted are listed in
-`fuzz/known.ignore`, in addition to `excel-compat.ignore`. Needs openxlsx2 (and encharter for that
-target and for charts on fuzzed chartsheets).
+to three fuzzed arguments (edge-case strings, numbers, colors, ranges, enumerations). For easeling
+a plot with fuzzed device arguments or graphical parameters is drawn on its device and added as a
+drawing. Calls that stop with an error rejected their input; files that save but fail validation
+are reported, grouped by function, argument and finding, with the argument that alone reproduces
+the finding. A reproducing script and the file of the first case in each group are kept in the
+output folder.
+
+Values built by create functions (`fmt_txt()`, `create_shape()`, `create_hyperlink()`, table
+styles) are fuzzed through the function that writes them, and the remove functions run after the
+parts they remove were added. Arguments that take raw XML are not fuzzed. Findings that are known
+and accepted are listed in `fuzz/known.ignore`, in addition to `excel-compat.ignore`.
+
+`--functions` limits a run to some targets. A case that runs longer than `--timeout` seconds
+(default 60) is reported as a hang. If R itself crashes, the case that crashed it is left in
+`last_case.R` in the output folder. `--fail` exits with status 1 if a case saved an invalid file,
+failed to save or hung.
+
+The `fuzz` workflow runs the fuzzer on GitHub Actions; start it manually under Actions, with the
+packages, their branches, the number of cases and the seed as inputs. The output is shown as the
+job summary, the reproducers and files are uploaded as `fuzz-results`. Needs openxlsx2, and
+encharter and easeling for their targets (encharter also for charts on fuzzed chartsheets).
 
 ## Updating
 
