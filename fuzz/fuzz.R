@@ -11,7 +11,8 @@ suppressPackageStartupMessages(library(openxlsx2))
 `%||%` <- function(x, y) if (is.null(x)) y else x
 
 args <- commandArgs(trailingOnly = TRUE)
-opt <- list(target = "all", n = "500", seed = "1", validator = "", out = "", keep = "FALSE", functions = "")
+opt <- list(target = "all", n = "500", seed = "1", validator = "", out = "", keep = "FALSE", functions = "",
+            fail = "FALSE")
 for (a in args) {
   kv <- strsplit(sub("^--", "", a), "=", fixed = TRUE)[[1]]
   opt[[kv[1]]] <- if (length(kv) > 1) paste(kv[-1], collapse = "=") else "TRUE"
@@ -791,12 +792,18 @@ fuzz <- function(label, make_case, base, sanity = list(base = list())) {
     unlink(drop)
     unlink(file.path(dir, "attribution"), recursive = TRUE)
   }
-  invisible(findings)
+  # cases that save an invalid file or fail to save
+  invisible(length(unique(findings$case)) + length(crashes))
 }
 
 cat("validator:", validator, "\nresults:  ", out_dir, "\n")
-if (opt$target %in% c("all", "openxlsx2") && length(targets_openxlsx2)) fuzz("openxlsx2", make_case_openxlsx2, base_workbook)
+problems <- 0
+if (opt$target %in% c("all", "openxlsx2") && length(targets_openxlsx2)) {
+  problems <- problems + fuzz("openxlsx2", make_case_openxlsx2, base_workbook)
+}
 if (opt$target %in% c("all", "encharter") && length(targets_encharter)) {
   suppressPackageStartupMessages(library(encharter))
-  fuzz("encharter", make_case_encharter, base_chart_workbook, sanity_encharter())
+  problems <- problems + fuzz("encharter", make_case_encharter, base_chart_workbook, sanity_encharter())
 }
+# --fail exits with status 1 if a case saved an invalid file or failed to save
+if (opt$fail == "TRUE" && problems > 0) quit(status = 1)

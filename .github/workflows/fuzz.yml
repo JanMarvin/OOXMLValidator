@@ -1,0 +1,96 @@
+name: fuzz
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: package to fuzz
+        type: choice
+        options: [all, openxlsx2, encharter]
+        default: all
+      n:
+        description: cases per package
+        default: "3000"
+      seed:
+        description: random seed, empty uses the run number
+        default: ""
+      functions:
+        description: comma separated targets, empty fuzzes all
+        default: ""
+      openxlsx2_ref:
+        description: openxlsx2 branch, tag or commit
+        default: main
+      encharter_ref:
+        description: encharter branch, tag or commit
+        default: main
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install native toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+
+      - name: Publish
+        run: dotnet publish -c Release -r linux-x64
+
+      - name: Cache schemas
+        uses: actions/cache@v5
+        with:
+          path: ~/.local/share/OOXMLValidator
+          key: schemas-${{ runner.os }}-${{ hashFiles('Fetch.cs') }}
+
+      - name: Fetch schemas
+        run: bin/Release/net10.0/linux-x64/publish/OOXMLValidator --fetch-schemas
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - name: Install openxlsx2 and encharter
+        run: |
+          Rscript -e 'install.packages(c("remotes", "png"))'
+          Rscript -e 'remotes::install_github("JanMarvin/openxlsx2@${{ inputs.openxlsx2_ref }}")'
+          Rscript -e 'remotes::install_github("JanMarvin/encharter@${{ inputs.encharter_ref }}", upgrade = "never")'
+          Rscript -e 'for (p in c("openxlsx2", "encharter")) cat(p, format(packageVersion(p)), "\n")'
+
+      - name: Fuzz
+        run: |
+          args=(--target=${{ inputs.target }} --n=${{ inputs.n }} --seed=${{ inputs.seed || github.run_number }}
+                --validator=bin/Release/net10.0/linux-x64/publish/OOXMLValidator --out=fuzz-results --fail)
+          if [ -n "${{ inputs.functions }}" ]; then args+=(--functions=${{ inputs.functions }}); fi
+          Rscript fuzz/fuzz.R "${args[@]}" 2>&1 | tee fuzz.txt
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "openxlsx2@${{ inputs.openxlsx2_ref }}, encharter@${{ inputs.encharter_ref }}, seed ${{ inputs.seed || github.run_number }}"
+            echo '```'
+            cat fuzz.txt 2>/dev/null
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: fuzz-results
+          path: |
+            fuzz.txt
+            fuzz-results
+          if-no-files-found: ignore

@@ -135,7 +135,10 @@ to three fuzzed arguments (edge-case strings, numbers, colors, ranges, enumerati
 stop with an error rejected their input; files that save but fail validation are reported, grouped
 by function, argument and finding, with the argument that alone reproduces the finding. A
 reproducing script and the file of the first case in each group are kept in the output folder.
-`--functions` limits a run to some targets. Values built by create functions (`fmt_txt()`,
+`--functions` limits a run to some targets, `--fail` exits with status 1 if a case saved an
+invalid file or failed to save. The `fuzz` workflow runs the fuzzer on GitHub Actions; start it
+manually under Actions, with the packages, their branches, the number of cases and the seed as inputs.
+The output is shown as the job summary, the reproducers and files are uploaded as `fuzz-results`. Values built by create functions (`fmt_txt()`,
 `create_shape()`, `create_hyperlink()`, table styles) are fuzzed through the function that writes
 them, and the remove functions run after the parts they remove were added.
 Arguments that take raw XML are not fuzzed. Findings that are known and accepted are listed in
