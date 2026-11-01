@@ -2,3 +2,6 @@
 
 # openxlsx2 keeps the attribute names Excel opens (algorithmName, hashPassword, ...)
 Sch_UndeclaredAttribute@x:workbook/x:workbookProtection
+
+# openxlsx2 writes hyperlink and image addresses as given, there is no URI check
+Opc_MalformedUri

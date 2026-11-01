@@ -8,3 +8,9 @@
 # Excel gives every chartEx fallback shape the id 0, so a second chartEx in the same drawing
 # duplicates it; only consumers without chartEx support read the fallback
 Sem_UniqueAttributeValue@mc:AlternateContent/mc:Fallback/xdr:sp/xdr:nvSpPr/xdr:cNvPr
+
+# ECMA-376 allows font families 0 to 14 (ST_FontFamily), the Open XML SDK only 0 to 5
+Sch_AttributeValueDataTypeDetailed@x:font/x:family
+Sem_AttributeValueDataTypeDetailed@x:font/x:family
+Sch_AttributeValueDataTypeDetailed@x:rPr/x:family
+Sem_AttributeValueDataTypeDetailed@x:rPr/x:family
