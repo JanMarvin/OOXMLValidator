@@ -598,9 +598,13 @@ make_case_encharter <- function() {
       calls <- c(calls, rep(list(sec), if (type == "stockChart") 3 else 1))
     }
     if (fn == "add_series_combo") {
+      # on a stock chart the combo series form a second stock group, on the secondary axes
+      if (type == "stockChart" && is.null(f$type) && (is.null(f$secondary) || isFALSE(f$secondary))) {
+        f$secondary <- TRUE
+      }
       combo <- as.call(c(list(call("$", as.name("ch"), as.name("add_series")),
                               name = "data!$B$1", data = "data!$B$2:$B$4"), f))
-      calls <- c(calls, rep(list(combo), if (identical(f$type, "stockChart")) 3 else 1))
+      calls <- c(calls, rep(list(combo), if (identical(f$type %||% type, "stockChart")) 3 else 1))
     }
     if (grepl("_title$", fn) && is.null(f$text)) f <- c(list(text = "title"), f)
     if (!fn %in% c("add_series", "add_series_ex", "add_series_ex_more", "add_series_combo", "wb_add_encharter")) {
