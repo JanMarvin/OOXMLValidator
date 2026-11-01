@@ -258,6 +258,31 @@ static class Program {
 
         List<(string, byte[])> invalid = new(parts) { ("docProps/core.xml", Utf8(core.Replace("2026-10-31T11:00:34Z", "yesterday"))) };
         CheckWith("invalid date in core.xml", Write("core_bad.xlsx", invalid), 1, new[] { E("Xsd_Invalid", "docProps/core.xml") }, "--schemas", dir);
+
+        // legacy VML: the <xml> root has no schema, the shapes below it are validated
+        List<(string, byte[])> vparts = Workbook();
+        vparts = Replace(vparts, "xl/worksheets/sheet1.xml", "</sheetData>", "</sheetData><legacyDrawing r:id=\"rId1\"/>");
+        vparts = Replace(vparts, "[Content_Types].xml", "</Types>",
+            "<Default Extension=\"vml\" ContentType=\"application/vnd.openxmlformats-officedocument.vmlDrawing\"/></Types>");
+        vparts.Add(("xl/worksheets/_rels/sheet1.xml.rels", Utf8($"""
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+              <Relationship Id="rId1" Type="{RelNs}/vmlDrawing" Target="../drawings/vmlDrawing1.vml"/>
+            </Relationships>
+            """)));
+        const string vml = """
+            <xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
+              <v:shape id="_x0000_s1025" type="#_x0000_t202" style="position:absolute" fillcolor="#ffffe1">
+                <x:ClientData ObjectType="Note"><x:Row>0</x:Row><x:Column>1</x:Column></x:ClientData>
+              </v:shape>
+            </xml>
+            """;
+        List<(string, byte[])> vvalid = new(vparts) { ("xl/drawings/vmlDrawing1.vml", Utf8(vml)) };
+        CheckWith("vml drawing is valid against the ECMA-376 schemas", Write("vml.xlsx", vvalid), 0, Array.Empty<Expect>(), "--schemas", dir);
+
+        List<(string, byte[])> vinvalid = new(vparts) { ("xl/drawings/vmlDrawing1.vml", Utf8(vml.Replace("\"Note\"", "\"Bogus\""))) };
+        CheckWith("invalid object type in a vml drawing", Write("vml_bad.xlsx", vinvalid), 1,
+            new[] { E("Xsd_Invalid", "xl/drawings/vmlDrawing1.vml") }, "--schemas", dir);
     }
 
     static void Spreadsheet(string root) {

@@ -104,7 +104,9 @@ changed upstream are downloaded again), `--fetch-strict` also adds Part 1 with t
 
 The schema folder is, in this order: `--schemas <dir>`, `$OOXMLVALIDATOR_SCHEMAS`, a `schemas`
 folder next to the program or in one of its parent folders, or the per-user folder. `--no-schemas`
-turns this off. Content is validated against any XSD whose `targetNamespace` matches. Imports are
+turns this off. Content is validated against any XSD whose `targetNamespace` matches. If the
+root element of a part has no schema, like the `<xml>` container of VML drawings, every subtree
+below it in a namespace with a schema is validated instead. Imports are
 resolved by `schemaLocation` within the folder or by namespace, never over the network. Markup
 compatibility (`mc:Ignorable`, `mc:AlternateContent`) is applied first, treating every namespace
 with a schema in the folder as understood.
@@ -119,6 +121,22 @@ dotnet run --project tests
 The tests run the published binary (or the path given as first argument) against workbooks built
 in code with one defect each, plus `tests/fixtures/chartex.xlsx` written by encharter, and check
 ids, locations and exit codes. The `core.xml` checks run once the schemas have been downloaded.
+
+## Fuzzing
+
+```sh
+Rscript fuzz/fuzz.R --target=openxlsx2 --n=2000 --seed=1
+Rscript fuzz/fuzz.R --target=encharter --n=1000
+```
+
+Each case is a small valid workbook plus one call of an openxlsx2 or encharter function with one
+to three fuzzed arguments (edge-case strings, numbers, colors, ranges, enumerations). Calls that
+stop with an error rejected their input; files that save but fail validation are reported, grouped
+by function, argument and finding, with the argument that alone reproduces the finding. A
+reproducing script and the file of the first case in each group are kept in the output folder.
+Arguments that take raw XML are not fuzzed. Findings that are known and accepted are listed in
+`fuzz/known.ignore`, in addition to `excel-compat.ignore`. Needs openxlsx2 (and encharter for that
+target and for charts on fuzzed chartsheets).
 
 ## Updating
 

@@ -1,0 +1,4 @@
+# findings that are known and accepted, used by fuzz.R in addition to excel-compat.ignore
+
+# openxlsx2 keeps the attribute names Excel opens (algorithmName, hashPassword, ...)
+Sch_UndeclaredAttribute@x:workbook/x:workbookProtection

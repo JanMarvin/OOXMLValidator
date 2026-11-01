@@ -217,13 +217,23 @@ sealed class SchemaStore {
 
         ApplyMarkupCompatibility(doc.Root, new HashSet<string>(StringComparer.Ordinal), Understood);
 
+        // a root without a schema, like the <xml> container of legacy VML drawings, is not
+        // validated itself, but every subtree in a namespace with a schema is
+        if (whole && Get(doc.Root.Name.NamespaceName) == null) {
+            whole = false;
+            fragmentNs = new HashSet<string>(StringComparer.Ordinal);
+            foreach (XElement e in doc.Root.Descendants()) {
+                if (Has(e.Name.NamespaceName)) fragmentNs.Add(e.Name.NamespaceName);
+            }
+        }
+
         List<XElement> todo = new();
         if (whole) {
             todo.Add(doc.Root);
         } else {
             foreach (XElement e in doc.Root.DescendantsAndSelf()) {
                 string ns = e.Name.NamespaceName;
-                if (fragmentNs.Contains(ns) && (e.Parent == null || e.Parent.Name.NamespaceName != ns)) todo.Add(e);
+                if (fragmentNs.Contains(ns) && !e.Ancestors().Any(a => fragmentNs.Contains(a.Name.NamespaceName))) todo.Add(e);
             }
         }
 
