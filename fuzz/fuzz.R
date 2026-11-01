@@ -673,7 +673,8 @@ make_case_encharter <- function() {
     }
     if (fn == "add_series_combo") {
       # on a stock chart the combo series form a second stock group, on the secondary axes
-      if (type == "stockChart" && is.null(f$type) && (is.null(f$secondary) || isFALSE(f$secondary))) {
+      if (type == "stockChart" && identical(f$type %||% type, "stockChart") &&
+          (is.null(f$secondary) || isFALSE(f$secondary) || identical(f$secondary, "none"))) {
         f$secondary <- TRUE
       }
       combo <- as.call(c(list(call("$", as.name("ch"), as.name("add_series")),
