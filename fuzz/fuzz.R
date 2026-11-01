@@ -11,7 +11,7 @@ suppressPackageStartupMessages(library(openxlsx2))
 `%||%` <- function(x, y) if (is.null(x)) y else x
 
 args <- commandArgs(trailingOnly = TRUE)
-opt <- list(target = "all", n = "500", seed = "1", validator = "", out = "", keep = "FALSE")
+opt <- list(target = "all", n = "500", seed = "1", validator = "", out = "", keep = "FALSE", functions = "")
 for (a in args) {
   kv <- strsplit(sub("^--", "", a), "=", fixed = TRUE)[[1]]
   opt[[kv[1]]] <- if (length(kv) > 1) paste(kv[-1], collapse = "=") else "TRUE"
@@ -145,6 +145,14 @@ g_comment <- function() {
   ))
 }
 
+g_dxf <- function() pick(list(0, 0, 0, 1, g_number()))
+
+# text that starts with markup is taken as xml by create_shape()
+g_text <- function() {
+  x <- g_string()
+  if (!is.na(x) && startsWith(x, "<")) "plain" else x
+}
+
 g_dv_value <- function() pick(list(1, c(1, 10), "\"a,b,c\"", "$A$1:$A$3", "A1>0", g_string(), g_number()))
 
 # openxlsx2 targets ----------------------------------------------------------
@@ -188,7 +196,7 @@ targets_openxlsx2 <- list(
   wb_set_col_widths = list(fixed = list(sheet = 1), params = list(cols = g_cols, widths = g_number, hidden = g_bool)),
   wb_set_row_heights = list(fixed = list(sheet = 1), params = list(rows = g_rows, heights = g_number, hidden = g_bool)),
   wb_merge_cells = list(fixed = list(sheet = 1), params = list(dims = g_dims)),
-  wb_add_data_validation = list(fixed = list(sheet = 1, value = 1), params = list(
+  wb_add_data_validation = list(fixed = list(sheet = 1, value = 1, operator = "greaterThan"), params = list(
     dims = g_range,
     type = g_choice(list("whole", "decimal", "date", "time", "textLength", "list", "custom", "any"), list("number")),
     operator = g_choice(list("between", "notBetween", "equal", "notEqual", "greaterThan", "lessThan",
@@ -344,7 +352,102 @@ targets_openxlsx2 <- c(targets_openxlsx2, list(
   wb_add_style_numfmt = list(fn = "wb_add_style", fixed = list(), params = list(
     style = function() call("create_numfmt", numFmtId = pick(list(164, 4, -1, 1e6, NA)), formatCode = g_numfmt()),
     style_name = g_name)),
-  wb_set_cell_style_across = list(fixed = list(sheet = 1, style = "A1"), params = list(cols = g_cols, rows = g_rows))
+  wb_set_cell_style_across = list(fixed = list(sheet = 1, style = "A1"), params = list(cols = g_cols, rows = g_rows)),
+
+  # rich text, shapes, hyperlink formulas and table styles are built by create functions
+  wb_add_data_fmt_txt = list(fn = "wb_add_data", fixed = list(sheet = 1, dims = "D1"), params = list(
+    x = function() as.call(c(as.name("fmt_txt"), list(x = g_string()), draw_args(list(
+      bold = g_bool, italic = g_bool, strike = g_bool, size = g_number, color = g_color, font = g_string,
+      charset = g_number, family = g_number, outline = g_bool, shadow = g_bool,
+      underline = g_choice(list("single", "double", TRUE), list("triple", "")),
+      vert_align = g_choice(list("superscript", "subscript", "baseline"), list("middle", "")))))))),
+  wb_add_drawing_shape = list(fn = "wb_add_drawing", fixed = list(sheet = 1), params = list(
+    dims = g_dims,
+    xml = function() as.call(c(as.name("create_shape"), draw_args(list(
+      shape = g_choice(list("rect", "ellipse", "triangle", "roundRect"), list("blob", "")),
+      name = g_string, text = g_text, fill_color = g_color, fill_transparency = g_number,
+      text_color = g_color, text_transparency = g_number, line_color = g_color, line_transparency = g_number,
+      text_align = g_choice(list("left", "center", "right", "justify"), list("middle")), rotation = g_number)))))),
+  wb_add_formula_hyperlink = list(fn = "wb_add_formula", fixed = list(sheet = 1, dims = "D1"), params = list(
+    x = function() as.call(c(as.name("create_hyperlink"), draw_args(list(
+      sheet = g_sheetname, row = g_rows, col = g_cols, text = g_string, file = g_url)))))),
+  # table styles reference differential formats by their index, the workbook has one
+  wb_add_style_tablestyle = list(fn = "wb_add_style", fixed = list(),
+    pre = list(quote(wb <- wb_add_dxfs_style(wb, name = "dx1", font_color = wb_color("red")))),
+    params = list(
+      style = function() as.call(c(as.name("create_tablestyle"), list(name = g_name()), draw_args(list(
+        whole_table = g_dxf, header_row = g_dxf, total_row = g_dxf, first_row_stripe = g_dxf)))))),
+  wb_add_style_pivottablestyle = list(fn = "wb_add_style", fixed = list(),
+    pre = list(quote(wb <- wb_add_dxfs_style(wb, name = "dx1", font_color = wb_color("red")))),
+    params = list(
+      style = function() as.call(c(as.name("create_pivottablestyle"), list(name = g_name()), draw_args(list(
+        whole_table = g_dxf, header_row = g_dxf, grand_total_row = g_dxf, blank_row = g_dxf)))))),
+  wb_add_plot = list(fixed = list(sheet = 1),
+    pre = list(quote(grDevices::graphics.off()), quote(grDevices::pdf(NULL)), quote(grDevices::dev.control("enable")),
+               quote(graphics::plot(1:3))),
+    params = list(dims = g_dims, width = g_number, height = g_number, row_offset = g_number, col_offset = g_number,
+                  file_type = g_choice(list("png", "jpeg", "tiff", "bmp"), list("gif")),
+                  units = g_choice(list("in", "cm", "px"), list("mm")), dpi = g_number)),
+  wb_set_cell_style = list(fixed = list(sheet = 1), params = list(dims = g_dims, style = g_dxf)),
+  wb_clone_sheet_style = list(fixed = list(), pre = list(quote(wb <- wb_add_worksheet(wb, "second"))),
+    params = list(from = function() pick(list(1, 2, "Sheet 1", 3)), to = function() pick(list(2, "second", 1, 3)))),
+  wb_set_creators = list(fixed = list(), params = list(creators = g_string)),
+  write_xlsx = list(no_wb = TRUE, fixed = list(x = quote(data.frame(a = 1:3)), file = quote(tempfile(fileext = ".xlsx"))),
+    params = list(
+    x = g_data, as_table = g_bool, sheet_name = g_sheetname, start_col = g_cols, start_row = g_rows,
+    col_names = g_bool, row_names = g_bool, tab_color = g_color, zoom = g_number, grid_lines = g_bool,
+    first_active_row = g_number, first_active_col = g_number, first_row = g_bool, first_col = g_bool,
+    col_widths = function() pick(list("auto", 10, g_number())), with_filter = g_bool,
+    table_style = g_choice(list("TableStyleMedium2", "none"), list("TableStyleLight99")), na = g_string,
+    title = g_string, subject = g_string, creator = g_string, category = g_string))
+))
+
+# removing what an earlier call added must not leave references behind
+remove_pre <- list(
+  quote(wb <- wb_add_data_table(wb, x = data.frame(p = 1:2, q = 3:4), dims = "E1", table_name = "tab_one")),
+  quote(wb <- wb_add_comment(wb, dims = "B2", comment = "note")),
+  quote(wb <- wb_add_hyperlink(wb, dims = "A2", target = "https://example.com")),
+  quote(wb <- wb_add_named_region(wb, dims = "A1:B2", name = "region_one")),
+  quote(wb <- wb_add_conditional_formatting(wb, dims = "A2:A4", rule = ">1")),
+  quote(wb <- wb_merge_cells(wb, dims = "G1:H2")),
+  quote(wb <- wb_add_filter(wb, rows = 1, cols = 1:2)),
+  quote(wb <- wb_set_row_heights(wb, rows = 2, heights = 30)),
+  quote(wb <- wb_set_col_widths(wb, cols = 2, widths = 30)),
+  quote(wb <- wb_add_worksheet(wb, "second")),
+  quote(wb <- wb_add_data(wb, sheet = "second", x = 1, dims = "A1")),
+  quote(wb <- wb_add_formula(wb, sheet = "second", x = "'Sheet 1'!A2", dims = "B1"))
+)
+g_remove_sheet <- function() pick(list(1, 2, "Sheet 1", "second", 3))
+
+targets_openxlsx2 <- c(targets_openxlsx2, list(
+  wb_remove_worksheet = list(fixed = list(), params = list(sheet = g_remove_sheet), pre = c(remove_pre, list(
+    quote(wb <- wb_add_pivot_table(wb, x = wb_data(wb, 1, dims = "A1:B4"), rows = "b", data = "a", pivot_table = "pt1"))))),
+  wb_remove_comment = list(fixed = list(sheet = 1), pre = remove_pre, params = list(dims = g_dims)),
+  wb_remove_tables = list(fixed = list(sheet = 1), pre = remove_pre,
+    params = list(table = function() pick(list("tab_one", "bogus", g_string())), remove_data = g_bool)),
+  wb_remove_named_region = list(fixed = list(sheet = 1), pre = remove_pre,
+    params = list(name = function() pick(list("region_one", "bogus", g_string())))),
+  wb_remove_hyperlink = list(fixed = list(sheet = 1), pre = remove_pre, params = list(dims = g_dims)),
+  wb_remove_conditional_formatting = list(fixed = list(sheet = 1), pre = remove_pre,
+    params = list(dims = g_dims, first = g_bool, last = g_bool)),
+  wb_remove_filter = list(fixed = list(), pre = remove_pre, params = list(sheet = g_remove_sheet)),
+  wb_remove_row_heights = list(fixed = list(sheet = 1), pre = remove_pre, params = list(rows = g_rows)),
+  wb_remove_col_widths = list(fixed = list(sheet = 1), pre = remove_pre, params = list(cols = g_cols)),
+  wb_remove_creators = list(fixed = list(), pre = list(quote(wb <- wb_add_creators(wb, c("a", "b")))),
+    params = list(creators = function() pick(list("a", c("a", "b"), "bogus", g_string())))),
+  wb_remove_bookview = list(fixed = list(), pre = list(quote(wb <- wb_set_bookview(wb, view = 2L))),
+    params = list(view = function() pick(list(1, 2, 3, 0, -1, NA)))),
+  wb_remove_slicer = list(fixed = list(), pre = c(pivot_pre, list(
+    quote(wb <- wb_add_slicer(wb, x = wb_data(wb, 1), slicer = "b", pivot_table = "pt1", sheet = 2)))),
+    params = list(sheet = function() pick(list(1, 2, 3)))),
+  wb_remove_timeline = list(fixed = list(),
+    pre = list(quote(wb <- wb_add_data(wb, x = data.frame(d = as.Date("2026-01-01") + 0:2), dims = "C1")),
+               quote(wb <- wb_add_pivot_table(wb, x = wb_data(wb, 1), rows = "d", data = "a", pivot_table = "pt1")),
+               quote(wb <- wb_add_timeline(wb, x = wb_data(wb, 1), timeline = "d", pivot_table = "pt1", sheet = 2))),
+    params = list(sheet = function() pick(list(1, 2, 3)))),
+  wb_clean_sheet = list(fixed = list(sheet = 1), pre = remove_pre, params = list(
+    dims = function() pick(list(NULL, g_dims())), numbers = g_bool, characters = g_bool, styles = g_bool,
+    merged_cells = g_bool, hyperlinks = g_bool, tables = g_bool))
 ))
 
 # encharter targets ----------------------------------------------------------
@@ -429,6 +532,15 @@ targets_encharter <- list(
                                                                                        c("red"), character()))))
 )
 
+# --functions=a,b limits the run to these targets
+if (nzchar(opt$functions)) {
+  only <- strsplit(opt$functions, ",", fixed = TRUE)[[1]]
+  unknown <- setdiff(only, c(names(targets_openxlsx2), names(targets_encharter)))
+  if (length(unknown)) stop("unknown functions: ", paste(unknown, collapse = ", "), call. = FALSE)
+  targets_openxlsx2 <- targets_openxlsx2[names(targets_openxlsx2) %in% only]
+  targets_encharter <- targets_encharter[names(targets_encharter) %in% only]
+}
+
 # cases ----------------------------------------------------------------------
 
 base_workbook <- function() {
@@ -458,8 +570,9 @@ make_case_openxlsx2 <- function() {
   list(target = fn, type = NA_character_, fuzzed = fuzzed, build = function(f) {
     args <- t$fixed
     args[names(f)] <- f
+    first <- if (isTRUE(t$no_wb)) list() else list(as.name("wb"))
     c(t$pre, list(as.call(list(as.name("<-"), as.name("wb"),
-                               as.call(c(list(as.name(t$fn %||% fn), as.name("wb")), args))))), t$post)
+                               as.call(c(list(as.name(t$fn %||% fn)), first, args))))), t$post)
   })
 }
 
@@ -505,7 +618,7 @@ run_case <- function(calls, file, base) {
   status <- tryCatch({
     withCallingHandlers({
       for (cl in calls) eval(cl, env)
-    }, warning = function(w) invokeRestart("muffleWarning"))
+    }, warning = function(w) invokeRestart("muffleWarning"), message = function(m) invokeRestart("muffleMessage"))
     "accepted"
   }, error = function(e) paste("rejected:", conditionMessage(e)))
   if (status != "accepted") return(status)
@@ -678,8 +791,8 @@ fuzz <- function(label, make_case, base, sanity = list(base = list())) {
 }
 
 cat("validator:", validator, "\nresults:  ", out_dir, "\n")
-if (opt$target %in% c("all", "openxlsx2")) fuzz("openxlsx2", make_case_openxlsx2, base_workbook)
-if (opt$target %in% c("all", "encharter")) {
+if (opt$target %in% c("all", "openxlsx2") && length(targets_openxlsx2)) fuzz("openxlsx2", make_case_openxlsx2, base_workbook)
+if (opt$target %in% c("all", "encharter") && length(targets_encharter)) {
   suppressPackageStartupMessages(library(encharter))
   fuzz("encharter", make_case_encharter, base_chart_workbook, sanity_encharter())
 }
